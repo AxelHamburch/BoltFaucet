@@ -20,7 +20,7 @@ from telegram.ext import (
 # === 1. Load & validate environment variables ===
 load_dotenv()
 
-LNBITS_API_KEY        = os.getenv("LNBITS_API_KEY")
+LNBITS_API_KEY        = os.getenv("LNBITS_API_KEY")        # Your Wallet Admon Key
 LNBITS_API_BASE       = os.getenv("LNBITS_API_URL")        # e.g. "https://lnbits.de"
 TELEGRAM_BOT_TOKEN    = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL           = os.getenv("LNBITS_WEBHOOK_URL")     # optional
@@ -30,11 +30,11 @@ MIN_WITHDRAWABLE_SATS = int(os.getenv("MIN_WITHDRAWABLE_SATS", "21"))
 MAX_WITHDRAWABLE_SATS = int(os.getenv("MAX_WITHDRAWABLE_SATS", "21"))
 ADMIN_TELEGRAM_ID     = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 
-# Now min/max withdrawable are in sats (no msat conversion)
+
+# === Withdraw extension needs the Value in SATS!!!! ===
 MIN_WITHDRAWABLE = MIN_WITHDRAWABLE_SATS
 MAX_WITHDRAWABLE = MAX_WITHDRAWABLE_SATS
 
-# Ensure required vars are present
 for var in ("LNBITS_API_KEY", "LNBITS_API_BASE", "TELEGRAM_BOT_TOKEN"):
     if not globals()[var]:
         raise RuntimeError(f"Missing required environment variable: {var}")
@@ -138,10 +138,6 @@ def has_received(chat_id: str) -> bool:
 
 
 def assign_voucher(chat_id: str, is_admin: bool = False):
-    """
-    Returns (lnurl, link_id). If admin, tags assigned_to with a timestamp suffix
-    so they can claim multiple without violating UNIQUE.
-    """
     conn = sqlite3.connect("db.sqlite3", timeout=10)
     c = conn.cursor()
     c.execute("SELECT lnurl, link_id FROM vouchers WHERE assigned_to IS NULL LIMIT 1")
@@ -184,9 +180,16 @@ def check_voucher_supply():
 
 # === 5. Telegram Handlers ===
 def send_voucher(update: Update, lnurl: str, link_id: str, username: str):
+    text = (
+        f"Hey @{username}, here are your {MIN_WITHDRAWABLE_SATS} sats 🎁\n\n"
+        f"<code>{lnurl}</code>\n\n"
+        "👉 Press to copy the voucher if needed!"
+            )
     update.message.reply_text(
-        f"Hey @{username}, here’s your {MIN_WITHDRAWABLE_SATS} sats 🎁\n{lnurl}"
+        text,
+        parse_mode="HTML"
     )
+
     qr = qrcode.QRCode(box_size=8, border=2)
     qr.add_data(lnurl)
     qr.make(fit=True)
@@ -220,7 +223,7 @@ def start_command(update: Update, context: CallbackContext):
     else:
         update.message.reply_text(
             "⚡ Welcome!\n"
-            "To claim your 21 sats, click the button on the homepage or use /getvoucher."
+            "To claim your sats, use /getvoucher."
         )
 
 
@@ -271,10 +274,10 @@ def main():
     dp.add_error_handler(error_handler)
 
     updater.start_polling()
-    logger.info("🤖 Voucher Bot is running. Use /start claim in Telegram.")
+    logger.info("🤖 Voucher Bot is running.")
 
     def stop(signum, frame):
-        logger.info("Shutting down…")
+        logger.info("📉 Shutting down…")
         updater.stop()
         updater.is_idle = False
 
@@ -282,7 +285,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
 
     updater.idle()
-    logger.info("Bot stopped.")
+    logger.info("⏹️ Bot stopped.")
 
 
 if __name__ == "__main__":
