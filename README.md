@@ -80,14 +80,16 @@ You’ll need an LNbits wallet, a Telegram bot, and this repository. That’s it
 
 As an admin, you can generate as many vouchers as you like. All other users are limited to one voucher. Each user's Telegram ID is stored in the database. If a user tries to claim a second time, they will receive a notification.
 
-> Hey @user, you’ve already claimed 21 sats 🎉
-> Let’s keep it fair—thanks! 🙏
+> Hey @user, you’ve already claimed 21 sats 🎉 Let’s keep it fair - thank you! 🙏
 
 You can use the `/stats` command in the bot to display a small statistics overview.
 
 ---
 
 ## BoltFaucet Autostart Service
+
+After a successful test, stop the application with `CTRL+C`.
+Deactivate the virtual environment by running `deactivate`, and then add this service.
 
 1. Create new system service:
 ```bash
