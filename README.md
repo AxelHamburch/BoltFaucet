@@ -144,7 +144,7 @@ LN - Address
 
   <img src="./assets/ln-axelhamburch-xyz.jpg" width="100">
 
-[axelhamburch@ereignishorizont.xyz](axelhamburch@ereignishorizont.xyz)
+[axelhamburch@ereignishorizont.xyz](lightning:axelhamburch@ereignishorizont.xyz)
 </div>
 
 
