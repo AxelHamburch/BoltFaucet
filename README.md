@@ -138,7 +138,9 @@ A heartfelt thank you to the entire [LNbits Team](https://github.com/lnbits) for
 
 ## Like this project?
 
-<div align="center">LN - Address
+<div align="center">
+
+LN - Address
   
   <img src="./assets/ln-axelhamburch-xyz.jpg" width="100">
 
