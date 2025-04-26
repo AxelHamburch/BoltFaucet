@@ -138,9 +138,12 @@ A heartfelt thank you to the entire [LNbits Team](https://github.com/lnbits) for
 
 ## Like this project?
 
-⚡[axelhamburch@ereignishorizont.xyz](lightning:axelhamburch@ereignishorizont.xyz) ⚡
- 
-<img src="./assets/ln-axelhamburch-xyz.jpg" width="100">
+<div align="center">LN - Address
+  
+  <img src="./assets/ln-axelhamburch-xyz.jpg" width="100">
+
+[axelhamburch@ereignishorizont.xyz](lightning:axelhamburch@ereignishorizont.xyz)
+</div>
 
 
 
