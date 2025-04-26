@@ -1,0 +1,7 @@
+voucher_bot/
+├── venv                  ← Virtual enviroment to capsule this project
+├── bot.py                ← Main Python script
+├── db.sqlite3            ← Auto-created SQLite database
+├── .env                  ← Your config and secrets
+├── requirements.txt      ← Dependencies
+└──HomepageButton.html   ← Example Button Design with Deeplink to your VoucherBot  
