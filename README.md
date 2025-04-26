@@ -8,8 +8,12 @@ __Your Lightning ticket to free Satoshis — authenticated and secure via Telegr
 ![Powered by LNbits](https://img.shields.io/badge/Powered%20by-LNbits-E829D3)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen)
 
+
 BoltFaucet is a Telegram bot that enables easy, secure Satoshis giveaways through the Bitcoin Lightning Network.
 Thanks to Telegram user authentication and LNbits voucher integration, BoltFaucet ensures every withdrawal is legitimate and abuse-proof.
+
+> Based on original work by [DoktorShift](https://github.com/DoktorShift).
+
 
 ### Features
 
@@ -32,33 +36,32 @@ Thanks to Telegram user authentication and LNbits voucher integration, BoltFauce
 
 Built for projects, communities, and Lightning fans who want to share sats — without worrying about spam or exploitation.
 
----
 
-### Was brauche ich und wie richte ich BoltFaucet ein?
+## What do I need and how do I set up BoltFaucet?
 
-Du brauchst ein LNbits Wallet, ein Telegram Bot und dieses Repository. Thats it!
+You’ll need an LNbits wallet, a Telegram bot, and this repository. That’s it!
 
-1. Leg dir ein LNbits Wallet an und beschaff dir den Admin key für das Wallet.
-2. Erstellte mit dem [t.me/BotFather](https://t.me/BotFather) einen neuen Bot und lass dir von ihm den Access Token dafür geben.
-3. Nutze den [t.me/userinfobot](https://t.me/userinfobot) um deine eigene ID herauszubekommen.
-4. Installiere Vorbedingungen und das Projekt auf einem Server:
+1. Create an LNbits wallet and get the admin key for your wallet.
+2. Create a new bot using [t.me/BotFather](https://t.me/BotFather) and obtain the access token.
+3. Use [t.me/userinfobot](https://t.me/userinfobot) to find out your own Telegram user ID.
+4. Install the required dependencies and clone the project on your server:
     ```bash
     sudo apt install python3.11-venv python3.11-distutils
     git clone https://github.com/AxelHamburch/BoltFaucet.git
     ```
-5. Erstelle eine .env Datei und öffne sie zum Bearbeiten:
+5. Create a `.env` file and open it for editing:
     ```bash
     cd BoltFaucet
     cp example.env .env
     nano .env
     ```
-6. Passe mindestens an:
+6. At minimum, update the following settings in the `.env` file:
    - LNbits API key
    - LNbits URL
    - Telegram Bot Access Token
    - Deine Telegram Chat/User-ID
    
-7. Installiere die Abhängigkeiten:
+7. Install the Python dependencies:
     ```bash
     python3.11 -m venv venv
     source venv/bin/activate
@@ -66,14 +69,78 @@ Du brauchst ein LNbits Wallet, ein Telegram Bot und dieses Repository. Thats it!
     python3.11 -m pip install --upgrade pip setuptools wheel
     pip install -r requirements.txt
     ```
-8. Starte die Anwendung.
+8. Start the application:
     ```bash
      python3.11 app.py
     ```
-9.  Speicher dir die Seite HomepageButton.html irgendwo ab und tausch in der ersten Zeile `YourBotName_bot` gegen den Namen deines eigenen Bots.
-10. Jetzt Doppelklick die html-Datei um sie zu öffnen und den Button anzuzeigen. 
-11. Klick auf den Button und lass dich zu deinem Bot weiterleiten um ihn zu testen.
-12. Jetzt sollte euch der Bot den Voucher anzeigen. 🎉 
+9.  Save the `HomepageButton.html` file locally and replace `YourBotName_bot` in the first line of the public link with the name of your own bot.
+10. Double-click the HTML file to open it and display the button.
+11. Click the button to be redirected to your bot for testing.
+12. The bot should now display a voucher for you. 🎉
+
+As an admin, you can generate as many vouchers as you like. All other users are limited to one voucher. Each user's Telegram ID is stored in the database. If a user tries to claim a second time, they will receive a notification.
+
+> Hey @user, you’ve already claimed 21 sats 🎉
+> Let’s keep it fair—thanks! 🙏
+
+You can use the `/stats` command in the bot to display a small statistics overview.
+
+---
+
+## BoltFaucet Autostart Service
+
+1. Create new system service:
+```bash
+sudo nano /etc/systemd/system/boltfaucet.service
+```
+
+2. Fill in the file with the following information and customize `youruser` in __five__ places:
+
+```plaintext
+[Unit]
+Description=boltfaucet
+After=network.target
+
+[Service]
+User=youruser
+WorkingDirectory=/home/youruser/boltfaucet
+EnvironmentFile=/home/youruser/boltfaucet/.env
+ExecStart=/home/youruser/boltfaucet/venv/bin/python /home/youruser/boltfaucet/app.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. Activate, start and monitor:
+```bash
+sudo systemctl enable boltfaucet
+sudo systemctl start boltfaucet
+sudo systemctl status boltfaucet
+```
+
+From now on, boltfaucet will start automatically with every restart. 🎉
+
+However, if you have problems, you can call up the logs with the following command:
+
+```bash
+sudo journalctl -u boltfaucet -f --since "2 hour ago"
+```
+
+## Acknowledgements
+
+This project is based on the original work by [DoktorShift](https://github.com/DoktorShift).  
+Many thanks for sharing the code and inspiring this implementation!
+
+A heartfelt thank you to the entire [LNbits Team](https://github.com/lnbits) for your incredible work on the outstanding [LNbits](https://lnbits.com/) project. Your contributions make solutions like this possible!
+
+## Like this project?
+
+⚡[axelhamburch@ereignishorizont.xyz](lightning:axelhamburch@ereignishorizont.xyz) ⚡
+ 
+<img src="./assets/ln-axelhamburch-xyz.jpg" width="100">
 
 
 
