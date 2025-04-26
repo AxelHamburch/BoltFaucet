@@ -100,14 +100,13 @@ sudo nano /etc/systemd/system/boltfaucet.service
 
 ```plaintext
 [Unit]
-Description=boltfaucet
+Description=BoltFaucet
 After=network.target
 
 [Service]
 User=youruser
-WorkingDirectory=/home/youruser/boltfaucet
-EnvironmentFile=/home/youruser/boltfaucet/.env
-ExecStart=/home/youruser/boltfaucet/venv/bin/python /home/youruser/boltfaucet/app.py
+WorkingDirectory=/home/youruser/BoltFaucet
+ExecStart=/home/youruser/BoltFaucet/venv/bin/python /home/youruser/BoltFaucet/app.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
