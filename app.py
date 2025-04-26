@@ -211,7 +211,7 @@ def start_command(update: Update, context: CallbackContext):
     if payload == "claim":
         if not is_admin and has_received(cid):
             update.message.reply_text(
-                f"Hey @{usr}, you’ve already claimed {MIN_WITHDRAWABLE_SATS} sats 🎉\n Let’s keep it fair— thank you! 🙏"
+                f"Hey @{usr}, you’ve already claimed {MIN_WITHDRAWABLE_SATS} sats 🎉 Let’s keep it fair— thank you! 🙏"
             )
         else:
             lnurl, lid = assign_voucher(cid, is_admin=is_admin)
