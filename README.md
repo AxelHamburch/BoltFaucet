@@ -141,10 +141,10 @@ A heartfelt thank you to the entire [LNbits Team](https://github.com/lnbits) for
 <div align="center">
 
 LN - Address
-  
+
   <img src="./assets/ln-axelhamburch-xyz.jpg" width="100">
 
-[axelhamburch@ereignishorizont.xyz](lightning:axelhamburch@ereignishorizont.xyz)
+[axelhamburch@ereignishorizont.xyz](axelhamburch@ereignishorizont.xyz)
 </div>
 
 
