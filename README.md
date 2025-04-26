@@ -2,7 +2,7 @@
 
 __Your Lightning ticket to free Satoshis — authenticated and secure via Telegram and LNbits.__
 
-[![License](https://img.shields.io/github/LICENSE/AxelHamburch/BoltFaucet)](LICENSE)
+[![License](https://img.shields.io/github/license/AxelHamburch/BoltFaucet)](LICENSE)
 ![Lightning Network](https://img.shields.io/badge/Lightning-Network-F7931A?logo=bitcoin)
 ![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-2CA5E0?logo=telegram)
 ![Powered by LNbits](https://img.shields.io/badge/Powered%20by-LNbits-E829D3)
