@@ -99,7 +99,7 @@ sudo nano /etc/systemd/system/boltfaucet.service
 2. Fill in the file with the following information and customize `youruser` in __five__ places:
 
 ```plaintext
-[Unit]
+ [Unit]
 Description=boltfaucet
 After=network.target
 
