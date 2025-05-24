@@ -35,14 +35,15 @@ ADMIN_TELEGRAM_ID      = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 LUCKY_VOUCHER_ENABLED  = os.getenv("LUCKY_VOUCHER_ENABLED", "false").lower() == "true"
 LUCKY_VOUCHER_AMOUNT   = int(os.getenv("LUCKY_VOUCHER_AMOUNT", "10000"))
 LUCKY_VOUCHER_COUNT    = int(os.getenv("LUCKY_VOUCHER_COUNT", "5"))
-# Interpret the env value as a percentage, then convert to [0,1]:
-_raw_chance           = float(os.getenv("LUCKY_VOUCHER_CHANCE", "0.10"))
-LUCKY_VOUCHER_CHANCE  = _raw_chance / 100.0
+# Interpret the env value as a percentage, then convert to [0,1]
+_raw_chance            = float(os.getenv("LUCKY_VOUCHER_CHANCE", "0.10"))
+LUCKY_VOUCHER_CHANCE   = _raw_chance / 100.0  # e.g. 0.10 => 0.001 => 0.1%
 
 # === Withdraw extension needs the value in SATS ===
 MIN_WITHDRAWABLE = MIN_WITHDRAWABLE_SATS
 MAX_WITHDRAWABLE = MAX_WITHDRAWABLE_SATS
 
+# Validate required envs
 for var in ("LNBITS_API_KEY", "LNBITS_API_BASE", "TELEGRAM_BOT_TOKEN"):
     if not globals()[var]:
         raise RuntimeError(f"Missing required environment variable: {var}")
@@ -94,42 +95,6 @@ def create_voucher_group():
     logger.info("Voucher group created: %s", link_id)
     fetch_and_store_lnurls(link_id)
 
-def fetch_and_store_lnurls(link_id: str):
-    csv_url = f"{LNBITS_API_BASE}/withdraw/csv/{link_id}"
-    headers = {**HEADERS, "Accept": "text/csv"}
-    resp = requests.get(csv_url, headers=headers, timeout=10)
-    if not resp.ok:
-        logger.error("Failed to fetch CSV: %s %s", resp.status_code, resp.text)
-        return
-
-    text = resp.text.strip()
-    if "<html" in text.lower():
-        logger.warning("Received HTML instead of CSV, extracting via regex")
-        lnurls = re.findall(r"(LNURL[0-9A-Za-z]+)", text)
-    else:
-        lnurls = text.splitlines()
-
-    seen, unique = set(), []
-    for u in lnurls:
-        if u not in seen:
-            seen.add(u)
-            unique.append(u)
-    logger.info("Imported %d unique vouchers", len(unique))
-    save_lnurls_to_db(unique, link_id)
-
-def save_lnurls_to_db(lnurls: list, link_id: str):
-    conn = sqlite3.connect("db.sqlite3", timeout=10)
-    c = conn.cursor()
-    for lnurl in lnurls:
-        try:
-            c.execute(
-                "INSERT INTO vouchers (lnurl, link_id) VALUES (?, ?)",
-                (lnurl, link_id)
-            )
-        except sqlite3.IntegrityError:
-            pass
-    conn.commit()
-    conn.close()
 
 # === 3b. Create lucky bonus vouchers ===
 def create_lucky_vouchers():
@@ -174,6 +139,45 @@ def create_lucky_vouchers():
     conn.close()
     logger.info(f"Stored {len(lnurls)} lucky vouchers.")
 
+# === 3a. (cont'd) Fetch & store normal vouchers ===
+def fetch_and_store_lnurls(link_id: str):
+    csv_url = f"{LNBITS_API_BASE}/withdraw/csv/{link_id}"
+    headers = {**HEADERS, "Accept": "text/csv"}
+    resp = requests.get(csv_url, headers=headers, timeout=10)
+    if not resp.ok:
+        logger.error("Failed to fetch CSV: %s %s", resp.status_code, resp.text)
+        return
+
+    text = resp.text.strip()
+    if "<html" in text.lower():
+        logger.warning("Received HTML instead of CSV, extracting via regex")
+        lnurls = re.findall(r"(LNURL[0-9A-Za-z]+)", text)
+    else:
+        lnurls = text.splitlines()
+
+    seen, unique = set(), []
+    for u in lnurls:
+        if u not in seen:
+            seen.add(u)
+            unique.append(u)
+    logger.info("Imported %d unique vouchers", len(unique))
+    save_lnurls_to_db(unique, link_id)
+
+
+def save_lnurls_to_db(lnurls: list, link_id: str):
+    conn = sqlite3.connect("db.sqlite3", timeout=10)
+    c = conn.cursor()
+    for lnurl in lnurls:
+        try:
+            c.execute(
+                "INSERT INTO vouchers (lnurl, link_id) VALUES (?, ?)",
+                (lnurl, link_id)
+            )
+        except sqlite3.IntegrityError:
+            pass
+    conn.commit()
+    conn.close()
+
 # === 4. Claim logic ===
 def has_received(chat_id: str) -> bool:
     conn = sqlite3.connect("db.sqlite3", timeout=10)
@@ -182,6 +186,7 @@ def has_received(chat_id: str) -> bool:
     count = c.fetchone()[0]
     conn.close()
     return count > 0
+
 
 def assign_voucher(chat_id: str, is_admin: bool = False):
     conn = sqlite3.connect("db.sqlite3", timeout=10)
@@ -239,6 +244,7 @@ def send_voucher(update: Update, lnurl: str, link_id: str, username: str, bonus:
     )
     update.message.reply_text(text, parse_mode="HTML")
 
+    # send QR image
     qr = qrcode.QRCode(box_size=8, border=2)
     qr.add_data(lnurl)
     qr.make(fit=True)
@@ -248,6 +254,11 @@ def send_voucher(update: Update, lnurl: str, link_id: str, username: str, bonus:
     buf.seek(0)
     buf.name = "voucher.png"
     update.message.reply_photo(photo=InputFile(buf))
+
+    # extra celebration for lucky
+    if bonus:
+        update.message.reply_text(f"🎉 Congratulations @{username}! You’ve hit the lucky QR jackpot! 🎉")
+
 
 def start_command(update: Update, context: CallbackContext):
     cid = str(update.effective_chat.id)
@@ -278,6 +289,7 @@ def start_command(update: Update, context: CallbackContext):
             "To claim your sats, use /getvoucher."
         )
 
+
 def getvoucher_command(update: Update, context: CallbackContext):
     cid = str(update.effective_chat.id)
     usr = update.effective_user.username or "Anonymous"
@@ -299,6 +311,7 @@ def getvoucher_command(update: Update, context: CallbackContext):
             update.message.reply_text("Sorry, no vouchers available right now.")
         check_voucher_supply()
 
+
 def stats_command(update: Update, context: CallbackContext):
     if update.effective_user.id != ADMIN_TELEGRAM_ID:
         return
@@ -311,11 +324,14 @@ def stats_command(update: Update, context: CallbackContext):
     conn.close()
     update.message.reply_text(f"📊 Used: {used}, Free: {free}")
 
+
 def error_handler(update: object, context: CallbackContext):
     logger.exception("Error while handling update: %s", context.error)
     raise DispatcherHandlerStop()
 
+
 def check_voucher_supply():
+    # refill normal vouchers if low
     conn = sqlite3.connect("db.sqlite3", timeout=10)
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NULL AND bonus = 0")
@@ -325,6 +341,18 @@ def check_voucher_supply():
     if free_normal < threshold:
         logger.info("Normal voucher supply low (%d), refilling...", free_normal)
         create_voucher_group()
+
+    # refill lucky vouchers when empty
+    if LUCKY_VOUCHER_ENABLED:
+        conn = sqlite3.connect("db.sqlite3", timeout=10)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NULL AND bonus = 1")
+        free_lucky = c.fetchone()[0]
+        conn.close()
+        if free_lucky == 0:
+            logger.info("Lucky voucher pool empty, refilling...")
+            create_lucky_vouchers()
+
 
 def main():
     init_db()
@@ -352,6 +380,7 @@ def main():
 
     updater.idle()
     logger.info("⏹️ Bot stopped.")
+
 
 if __name__ == "__main__":
     main()
