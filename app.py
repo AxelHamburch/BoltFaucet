@@ -332,7 +332,7 @@ def assign_voucher(chat_id: str, is_admin: bool = False):
     conn.close()
     return None, None
 
-# === 5. Telegram Handlers ===
+# === 5. Fixed Telegram Handlers ===
 def send_voucher(update: Update, lnurl: str, link_id: str, username: str, bonus: bool = False):
     amount = LUCKY_VOUCHER_AMOUNT if bonus else MIN_WITHDRAWABLE_SATS
     
@@ -346,23 +346,30 @@ def send_voucher(update: Update, lnurl: str, link_id: str, username: str, bonus:
         # Record the lucky win
         record_lucky_win(str(update.effective_chat.id), username, amount)
         
+        # Lucky bonus message with clean formatting
         text = (
-            f"🍀 Lucky bonus! You've won an additional {amount:,} sats, @{username}!\n\n"
-            f"{lnurl}\n\n"
-            f"Tap to copy the bonus voucher code."
+            f"🍀 <b>Lucky Bonus!</b>\n"
+            f"You've won an additional <b>{amount:,} sats</b>, @{username}!\n\n"
+            f"<b>Voucher Code:</b>\n"
+            f"<code>{lnurl}</code>\n\n"
+            f"💡 <i>Tap the code above to copy it, then paste into your Lightning wallet</i>"
         )
+        
     else:
+        # Regular voucher message
         text = (
-            f"Here are your {amount} sats, @{username}.\n\n"
-            f"{lnurl}\n\n"
-            f"Tap to copy the voucher code."
+            f"Here are your <b>{amount} sats</b>, @{username}.\n\n"
+            f"<b>Voucher Code:</b>\n"
+            f"<code>{lnurl}</code>\n\n"
+            f"💡 <i>Tap the code above to copy it, then paste into your Lightning wallet</i>"
         )
         
         if LUCKY_VOUCHER_ENABLED:
             chance_percent = LUCKY_VOUCHER_CHANCE * 100
-            text += f"\n\n💡 You had a {chance_percent:.2f}% chance for a {LUCKY_VOUCHER_AMOUNT:,} sat bonus."
+            text += f"\n\n🎯 <i>You had a {chance_percent:.2f}% chance for a {LUCKY_VOUCHER_AMOUNT:,} sat bonus</i>"
     
-    update.message.reply_text(text)
+    # Send message with HTML formatting
+    update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     # Generate and send QR code
     try:
@@ -375,14 +382,14 @@ def send_voucher(update: Update, lnurl: str, link_id: str, username: str, bonus:
         buf.seek(0)
         buf.name = f"{'lucky_' if bonus else ''}voucher.png"
         
-        caption = f"{'Lucky Bonus' if bonus else 'Lightning'} Voucher QR"
+        caption = f"{'🍀 Lucky Bonus' if bonus else '⚡ Lightning'} Voucher QR"
         update.message.reply_photo(photo=InputFile(buf), caption=caption)
         
         logger.info(f"Sent {'lucky ' if bonus else ''}voucher QR for LNURL: {lnurl[:20]}...")
         
     except Exception as e:
         logger.error(f"Failed to generate QR code: {e}")
-        update.message.reply_text("QR code generation failed. Please use the text voucher above.")
+        update.message.reply_text("QR code generation failed. Please use the voucher code above.")
 
 def start_command(update: Update, context: CallbackContext):
     cid = str(update.effective_chat.id)
@@ -394,33 +401,37 @@ def start_command(update: Update, context: CallbackContext):
     if payload == "claim":
         handle_claim(update, context, usr, cid, is_admin)
     else:
+        # Enhanced welcome message
         welcome_text = (
-            f"Welcome to the Lightning Voucher Bot, @{usr}.\n\n"
-            f"Get your free {MIN_WITHDRAWABLE_SATS} sats with /getvoucher\n\n"
+            f"⚡ <b>Lightning Voucher Bot</b>\n\n"
+            f"Welcome @{usr}! Get your free <b>{MIN_WITHDRAWABLE_SATS} sats</b> with /getvoucher\n\n"
         )
         
         if LUCKY_VOUCHER_ENABLED:
             chance_percent = LUCKY_VOUCHER_CHANCE * 100
             total_wins, total_amount = get_lucky_stats()
             welcome_text += (
-                f"🍀 Lucky feature: {chance_percent:.2f}% chance to win {LUCKY_VOUCHER_AMOUNT:,} bonus sats\n"
-                f"📊 {total_wins} lucky winners, {total_amount:,} bonus sats distributed\n\n"
+                f"🍀 <b>Lucky Feature Active!</b>\n"
+                f"• {chance_percent:.2f}% chance to win <b>{LUCKY_VOUCHER_AMOUNT:,} bonus sats</b>\n"
+                f"• {total_wins} lucky winners so far\n"
+                f"• {total_amount:,} bonus sats distributed\n\n"
             )
         
         welcome_text += (
-            f"Commands:\n"
+            f"<b>Commands:</b>\n"
             f"• /getvoucher - Claim your sats\n"
             f"• /info - About lucky bonuses\n"
             f"• /lucky - Lucky statistics"
         )
         
-        update.message.reply_text(welcome_text)
+        update.message.reply_text(welcome_text, parse_mode=ParseMode.HTML)
 
 def handle_claim(update: Update, context: CallbackContext, username: str, chat_id: str, is_admin: bool):
     if not is_admin and has_received(chat_id):
         update.message.reply_text(
-            f"You've already claimed your {MIN_WITHDRAWABLE_SATS} sats, @{username}. "
-            f"Each user can only claim once."
+            f"You've already claimed your <b>{MIN_WITHDRAWABLE_SATS} sats</b>, @{username}.\n"
+            f"Each user can only claim once to keep it fair for everyone.",
+            parse_mode=ParseMode.HTML
         )
         return
 
@@ -435,7 +446,7 @@ def handle_claim(update: Update, context: CallbackContext, username: str, chat_i
             send_voucher(update, lnurl_l, lid_l, username, bonus=True)
     else:
         update.message.reply_text(
-            "No vouchers available right now. "
+            "No vouchers available right now.\n"
             "The admin has been notified to refill the supply."
         )
     
@@ -456,18 +467,18 @@ def info_command(update: Update, context: CallbackContext):
     total_wins, total_amount = get_lucky_stats()
     
     info_text = (
-        f"🍀 Lucky Bonus Feature\n\n"
-        f"How it works:\n"
+        f"🍀 <b>Lucky Bonus Feature</b>\n\n"
+        f"<b>How it works:</b>\n"
         f"• {chance_percent:.2f}% chance per claim\n"
-        f"• Winners get an extra {LUCKY_VOUCHER_AMOUNT:,} sats\n"
+        f"• Winners get an extra <b>{LUCKY_VOUCHER_AMOUNT:,} sats</b>\n"
         f"• Completely random and automatic\n\n"
-        f"Statistics:\n"
+        f"<b>Statistics:</b>\n"
         f"• {total_wins} lucky winners\n"
         f"• {total_amount:,} bonus sats distributed\n"
         f"• Average: {(total_amount / max(total_wins, 1)):,.0f} sats per winner"
     )
     
-    update.message.reply_text(info_text)
+    update.message.reply_text(info_text, parse_mode=ParseMode.HTML)
 
 def lucky_command(update: Update, context: CallbackContext):
     if not LUCKY_VOUCHER_ENABLED:
@@ -487,22 +498,22 @@ def lucky_command(update: Update, context: CallbackContext):
     conn.close()
     
     stats_text = (
-        f"🍀 Lucky Statistics\n\n"
-        f"Chance: {chance_percent:.2f}% per claim\n"
-        f"Bonus: {LUCKY_VOUCHER_AMOUNT:,} sats\n"
-        f"Total winners: {total_wins}\n"
-        f"Total distributed: {total_amount:,} sats\n\n"
+        f"🍀 <b>Lucky Statistics</b>\n\n"
+        f"<b>Chance:</b> {chance_percent:.2f}% per claim\n"
+        f"<b>Bonus:</b> {LUCKY_VOUCHER_AMOUNT:,} sats\n"
+        f"<b>Total winners:</b> {total_wins}\n"
+        f"<b>Total distributed:</b> {total_amount:,} sats\n\n"
     )
     
     if recent_winners:
-        stats_text += "Recent winners:\n"
+        stats_text += "<b>Recent winners:</b>\n"
         for username, amount, won_at in recent_winners:
             won_date = won_at.split()[0] if won_at else "Unknown"
             stats_text += f"• @{username or 'Anonymous'}: {amount:,} sats ({won_date})\n"
     else:
         stats_text += "No lucky winners yet."
     
-    update.message.reply_text(stats_text)
+    update.message.reply_text(stats_text, parse_mode=ParseMode.HTML)
 
 def stats_command(update: Update, context: CallbackContext):
     if update.effective_user.id != ADMIN_TELEGRAM_ID:
@@ -536,25 +547,25 @@ def stats_command(update: Update, context: CallbackContext):
     conn.close()
     
     stats_text = (
-        f"📊 Admin Statistics\n\n"
-        f"Regular Vouchers:\n"
+        f"📊 <b>Admin Statistics</b>\n\n"
+        f"<b>Regular Vouchers:</b>\n"
         f"• Used: {used_normal}\n"
         f"• Available: {free_normal}\n\n"
-        f"Lucky Vouchers:\n"
+        f"<b>Lucky Vouchers:</b>\n"
         f"• Used: {used_lucky}\n"
         f"• Available: {free_lucky}\n\n"
-        f"Lucky Wins:\n"
+        f"<b>Lucky Wins:</b>\n"
         f"• Total: {total_lucky_wins}\n"
         f"• Amount: {total_lucky_amount:,} sats\n"
         f"• Rate: {(used_lucky / max(used_normal, 1) * 100):.2f}%\n\n"
-        f"Database:\n"
+        f"<b>Database:</b>\n"
         f"• Invalid entries: {invalid_entries}"
     )
     
     if invalid_entries > 0:
         stats_text += f"\n\nUse /cleanup to remove invalid entries"
     
-    update.message.reply_text(stats_text)
+    update.message.reply_text(stats_text, parse_mode=ParseMode.HTML)
 
 def cleanup_command(update: Update, context: CallbackContext):
     """Admin command to clean up invalid database entries"""
@@ -613,7 +624,7 @@ def main():
     dp.add_error_handler(error_handler)
 
     updater.start_polling()
-    logger.info("🤖 Voucher Bot is running with database fixes.")
+    logger.info("🤖 Fixed Voucher Bot is running.")
 
     def stop(signum, frame):
         logger.info("📉 Shutting down…")
