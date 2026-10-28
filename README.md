@@ -40,7 +40,7 @@ Built for projects, communities, and Lightning fans who want to share sats — w
 
 ## What do I need and how do I set up BoltFaucet?
 
-You’ll need an LNbits wallet, a Telegram bot, and this repository. That’s it!
+You'll need an LNbits wallet, a Telegram bot, and this repository. That's it!
 
 1. Create an LNbits wallet and get the admin key for your wallet.
 2. Create a new bot using [t.me/BotFather](https://t.me/BotFather) and obtain the access token.
@@ -60,7 +60,7 @@ You’ll need an LNbits wallet, a Telegram bot, and this repository. That’s it
    - LNbits API key
    - LNbits URL
    - Telegram Bot Access Token
-   - Deine Telegram Chat/User-ID
+   - Your Telegram chat/user ID
    
 7. Install the Python dependencies:
     ```bash
@@ -74,7 +74,7 @@ You’ll need an LNbits wallet, a Telegram bot, and this repository. That’s it
     ```bash
      python3.11 app.py
     ```
-9.  Save the `HomepageButton.html` file locally and replace `YourBotName_bot` in the first line of the public link with the name of your own bot.
+9. Save the `HomepageButton.html` file locally and replace `YourBotName_bot` in the first line of the public link with the name of your own bot.
 10. Double-click the HTML file to open it and display the button.
 11. Click the button to be redirected to your bot for testing.
 12. The bot should now display a voucher for you. 🎉
@@ -85,13 +85,13 @@ As an admin, you can generate as many vouchers as you like. All other users are 
 
 ### Bot Commands
 
-| Command          | Who         | Description                                                                |
-|------------------|-------------|-----------------------------------------------------------------------------|
-| `/start`         | everyone    | Shows the welcome message.                                                  |
-| `/getvoucher`    | everyone    | Claims a voucher (once per user; admins can claim repeatedly).              |
-| `/stats`         | admin only  | Shows voucher supply and usage statistics.                                  |
-| `/cleanup`       | admin only  | Removes invalid database entries.                                           |
-| `/resetvouchers` | admin only  | Purges all still-unassigned vouchers to force a fresh batch (see below).    |
+| Command          | Who        | Description                                                              |
+|------------------|------------|--------------------------------------------------------------------------|
+| `/start`         | everyone   | Shows the welcome message.                                               |
+| `/getvoucher`    | everyone   | Claims a voucher (once per user; admins can claim repeatedly).           |
+| `/stats`         | admin only | Shows voucher supply and usage statistics.                               |
+| `/cleanup`       | admin only | Removes invalid database entries.                                        |
+| `/resetvouchers` | admin only | Purges all still-unassigned vouchers to force a fresh batch (see below). |
 
 ### Changing the LNbits server or API key later
 
@@ -117,7 +117,7 @@ Deactivate the virtual environment by running `deactivate`, and then add this se
 sudo nano /etc/systemd/system/boltfaucet.service
 ```
 
-2. Fill in the file with the following information and customize `youruser` in __five__ places:
+2. Fill in the file with the following information and customize `youruser` in __four__ places:
 
 ```plaintext
 [Unit]
@@ -148,7 +148,7 @@ From now on, boltfaucet will start automatically with every restart. 🎉
 However, if you have problems, you can call up the logs with the following command:
 
 ```bash
-sudo journalctl -u boltfaucet -f --since "2 hour ago"
+sudo journalctl -u boltfaucet -f --since "2 hours ago"
 ```
 
 ## Acknowledgements
@@ -168,9 +168,4 @@ LN - Address
 
 [axelhamburch@ereignishorizont.xyz](lightning:axelhamburch@ereignishorizont.xyz)
 </div>
-
-
-
-
-
 
