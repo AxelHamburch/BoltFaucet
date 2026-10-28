@@ -21,8 +21,7 @@ Thanks to Telegram user authentication and LNbits voucher integration, BoltFauce
 - 🔒 User Authentication — prevents faucet abuse by linking Telegram user IDs.
 - 📲 One-Click Claiming — users simply tap a button to receive a unique QR code.
 - 🛡️ Voucher System — backed by LNbits Wallet Accounts for secure voucher generation.
-- 🍀 Lucky Bonus System — configurable chance for users to win bonus sats.
-- 📊 Statistics Tracking — monitor usage, lucky wins, and voucher supply.
+- 📊 Statistics Tracking — monitor usage and voucher supply.
 - 🧩 Simple Integration — easily deployable with minimal setup.
 
 ### How It Works
@@ -31,7 +30,6 @@ Thanks to Telegram user authentication and LNbits voucher integration, BoltFauce
 2. The bot sends a unique LNURL-withdraw QR code.
 3. The user claims their Sats with their Lightning wallet.
 4. Telegram ID is stored to prevent multiple claims.
-5. Lucky users may receive an additional bonus voucher automatically.
 
 ### Why BoltFaucet?
 
@@ -91,21 +89,9 @@ As an admin, you can generate as many vouchers as you like. All other users are 
 |------------------|-------------|-----------------------------------------------------------------------------|
 | `/start`         | everyone    | Shows the welcome message.                                                  |
 | `/getvoucher`    | everyone    | Claims a voucher (once per user; admins can claim repeatedly).              |
-| `/info`          | everyone    | Learn about the lucky bonus feature.                                        |
-| `/lucky`         | everyone    | View lucky statistics and recent winners.                                   |
 | `/stats`         | admin only  | Shows voucher supply and usage statistics.                                  |
 | `/cleanup`       | admin only  | Removes invalid database entries.                                           |
 | `/resetvouchers` | admin only  | Purges all still-unassigned vouchers to force a fresh batch (see below).    |
-
-### Lucky Bonus Feature
-
-The lucky bonus system adds excitement to your faucet by giving users a small chance to win additional sats:
-
-- **Configurable odds**: Set the percentage chance for lucky wins
-- **Bonus amount**: Define how many extra sats lucky winners receive
-- **Automatic tracking**: All lucky wins are recorded with statistics
-- **Recent winners**: Display recent lucky winners to build excitement
-- **Fair distribution**: Lucky vouchers are managed separately from regular vouchers
 
 ### Changing the LNbits server or API key later
 

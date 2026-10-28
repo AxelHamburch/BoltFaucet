@@ -7,7 +7,6 @@ import sqlite3
 import logging
 import requests
 import qrcode
-import random
 import signal
 from io import BytesIO
 from html import escape
@@ -32,13 +31,6 @@ VOUCHER_BATCH_SIZE     = int(os.getenv("VOUCHER_BATCH_SIZE", "100"))
 MIN_WITHDRAWABLE_SATS  = int(os.getenv("MIN_WITHDRAWABLE_SATS", "21"))
 MAX_WITHDRAWABLE_SATS  = int(os.getenv("MAX_WITHDRAWABLE_SATS", "21"))
 ADMIN_TELEGRAM_ID      = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
-
-# === Lucky voucher settings ===
-LUCKY_VOUCHER_ENABLED  = os.getenv("LUCKY_VOUCHER_ENABLED", "false").lower() == "true"
-LUCKY_VOUCHER_AMOUNT   = int(os.getenv("LUCKY_VOUCHER_AMOUNT", "10000"))
-LUCKY_VOUCHER_COUNT    = int(os.getenv("LUCKY_VOUCHER_COUNT", "5"))
-_raw_chance            = float(os.getenv("LUCKY_VOUCHER_CHANCE", "0.10"))
-LUCKY_VOUCHER_CHANCE   = _raw_chance / 100.0
 
 MIN_WITHDRAWABLE = MIN_WITHDRAWABLE_SATS
 MAX_WITHDRAWABLE = MAX_WITHDRAWABLE_SATS
@@ -68,19 +60,7 @@ def init_db():
         link_id TEXT   NOT NULL,
         assigned_to TEXT UNIQUE,
         used    BOOLEAN DEFAULT 0,
-        bonus   BOOLEAN DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    ''')
-    
-    # Add lucky wins tracking
-    c.execute('''
-      CREATE TABLE IF NOT EXISTS lucky_wins (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        chat_id TEXT NOT NULL,
-        username TEXT,
-        amount INTEGER NOT NULL,
-        won_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     ''')
     c.execute('''
@@ -185,52 +165,6 @@ def create_voucher_group():
     logger.info("Voucher group created: %s", link_id)
     fetch_and_store_lnurls(link_id)
 
-# === 3b. Create lucky bonus vouchers ===
-def create_lucky_vouchers():
-    if not LUCKY_VOUCHER_ENABLED:
-        return
-    logger.info(f"Creating {LUCKY_VOUCHER_COUNT} lucky vouchers ({LUCKY_VOUCHER_AMOUNT} sats each)...")
-    url = f"{LNBITS_API_BASE}/withdraw/api/v1/links"
-    payload = {
-        "title": "Lucky Voucher",
-        "min_withdrawable": LUCKY_VOUCHER_AMOUNT,
-        "max_withdrawable": LUCKY_VOUCHER_AMOUNT,
-        "uses": LUCKY_VOUCHER_COUNT,
-        "wait_time": 1,
-        "is_unique": True,
-        "webhook_url": WEBHOOK_URL
-    }
-    resp = requests.post(url, json=payload, headers=HEADERS, timeout=10)
-    if not resp.ok:
-        logger.error("Failed to create lucky vouchers: %s %s", resp.status_code, resp.text)
-        return
-    link_id = resp.json().get("id")
-
-    csv_url = f"{LNBITS_API_BASE}/withdraw/csv/{link_id}"
-    headers = {**HEADERS, "Accept": "text/csv"}
-    resp = requests.get(csv_url, headers=headers, timeout=10)
-    if not resp.ok:
-        logger.error("Failed to fetch lucky vouchers CSV: %s %s", resp.status_code, resp.text)
-        return
-
-    lnurls = extract_lnurls_from_response(resp.text)
-    if lnurls:
-        conn = sqlite3.connect("db.sqlite3", timeout=10)
-        c = conn.cursor()
-        for lnurl in lnurls:
-            try:
-                c.execute(
-                    "INSERT INTO vouchers (lnurl, link_id, bonus) VALUES (?, ?, 1)",
-                    (lnurl, link_id)
-                )
-            except sqlite3.IntegrityError:
-                pass
-        conn.commit()
-        conn.close()
-        logger.info(f"Stored {len(lnurls)} lucky vouchers.")
-    else:
-        logger.error("No valid LNURLs found in lucky voucher response")
-
 # === 3a. (cont'd) Improved LNURL extraction ===
 def extract_lnurls_from_response(response_text):
     """Extract valid LNURLs from response, handling both CSV and HTML responses"""
@@ -311,117 +245,58 @@ def has_received(chat_id: str) -> bool:
     conn.close()
     return count > 0
 
-def get_lucky_stats():
-    """Get statistics about lucky wins"""
-    conn = sqlite3.connect("db.sqlite3", timeout=10)
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*), SUM(amount) FROM lucky_wins")
-    result = c.fetchone()
-    conn.close()
-    total_wins = result[0] or 0
-    total_amount = result[1] or 0
-    return total_wins, total_amount
-
-def record_lucky_win(chat_id: str, username: str, amount: int):
-    """Record a lucky win in the database"""
-    conn = sqlite3.connect("db.sqlite3", timeout=10)
-    c = conn.cursor()
-    c.execute(
-        "INSERT INTO lucky_wins (chat_id, username, amount) VALUES (?, ?, ?)",
-        (chat_id, username, amount)
-    )
-    conn.commit()
-    conn.close()
-
 def assign_voucher(chat_id: str, is_admin: bool = False):
     conn = sqlite3.connect("db.sqlite3", timeout=10)
     c = conn.cursor()
 
-    # 1. Assign normal voucher - only select valid LNURLs
+    # Assign a voucher - only select valid LNURLs
     c.execute(
         "SELECT lnurl, link_id FROM vouchers "
-        "WHERE assigned_to IS NULL AND bonus = 0 AND lnurl LIKE 'LNURL%' "
+        "WHERE assigned_to IS NULL AND lnurl LIKE 'LNURL%' "
         "LIMIT 1"
     )
-    normal = c.fetchone()
-    if not normal:
-        logger.info("No unassigned normal vouchers, creating new batch")
+    row = c.fetchone()
+    if not row:
+        logger.info("No unassigned vouchers, creating new batch")
         conn.close()
         create_voucher_group()
         conn = sqlite3.connect("db.sqlite3", timeout=10)
         c = conn.cursor()
         c.execute(
             "SELECT lnurl, link_id FROM vouchers "
-            "WHERE assigned_to IS NULL AND bonus = 0 AND lnurl LIKE 'LNURL%' "
+            "WHERE assigned_to IS NULL AND lnurl LIKE 'LNURL%' "
             "LIMIT 1"
         )
-        normal = c.fetchone()
+        row = c.fetchone()
 
-    lucky = None
-    if normal:
-        lnurl_n, link_id_n = normal
+    if row:
+        lnurl, link_id = row
         assign_tag = f"{chat_id}-{time.time_ns()}" if is_admin else chat_id
-        c.execute("UPDATE vouchers SET assigned_to = ? WHERE lnurl = ?", (assign_tag, lnurl_n))
-
-        # 2. Possibly assign a lucky bonus voucher
-        if LUCKY_VOUCHER_ENABLED and random.random() < LUCKY_VOUCHER_CHANCE:
-            c.execute(
-                "SELECT lnurl, link_id FROM vouchers "
-                "WHERE assigned_to IS NULL AND bonus = 1 AND lnurl LIKE 'LNURL%' "
-                "ORDER BY RANDOM() LIMIT 1"
-            )
-            lucky_row = c.fetchone()
-            if lucky_row:
-                lnurl_l, link_id_l = lucky_row
-                c.execute(
-                    "UPDATE vouchers SET assigned_to = ? WHERE lnurl = ?",
-                    (assign_tag + "-bonus", lnurl_l)
-                )
-                lucky = (lnurl_l, link_id_l)
-
+        c.execute("UPDATE vouchers SET assigned_to = ? WHERE lnurl = ?", (assign_tag, lnurl))
         conn.commit()
         conn.close()
-        return (lnurl_n, link_id_n), lucky
+        return lnurl, link_id
 
     conn.close()
     return None, None
 
 # === 5. Fixed Telegram Handlers ===
-def send_voucher(update: Update, lnurl: str, link_id: str, username: str, bonus: bool = False):
-    amount = LUCKY_VOUCHER_AMOUNT if bonus else MIN_WITHDRAWABLE_SATS
-    
+def send_voucher(update: Update, lnurl: str, link_id: str, username: str):
+    amount = MIN_WITHDRAWABLE_SATS
+
     # Validate LNURL format
     if not lnurl.startswith('LNURL') or not re.match(r'^LNURL[0-9A-Z]+$', lnurl.upper()):
         logger.error(f"Invalid LNURL format: {lnurl}")
         update.message.reply_text("Error: Invalid voucher format. Please contact admin.")
         return
-    
-    if bonus:
-        # Record the lucky win
-        record_lucky_win(str(update.effective_chat.id), username, amount)
-        
-        # Lucky bonus message with clean formatting
-        text = (
-            f"🍀 <b>Lucky Bonus!</b>\n"
-            f"You've won an additional <b>{amount:,} sats</b>, @{username}!\n\n"
-            f"<b>Voucher Code:</b>\n"
-            f"<code>{lnurl}</code>\n\n"
-            f"💡 <i>Tap the code above to copy it, then paste into your Lightning wallet</i>"
-        )
-        
-    else:
-        # Regular voucher message
-        text = (
-            f"Here are your <b>{amount} sats</b>, @{username}.\n\n"
-            f"<b>Voucher Code:</b>\n"
-            f"<code>{lnurl}</code>\n\n"
-            f"💡 <i>Tap the code above to copy it, then paste into your Lightning wallet</i>"
-        )
-        
-        if LUCKY_VOUCHER_ENABLED:
-            chance_percent = LUCKY_VOUCHER_CHANCE * 100
-            text += f"\n\n🎯 <i>You had a {chance_percent:.2f}% chance for a {LUCKY_VOUCHER_AMOUNT:,} sat bonus</i>"
-    
+
+    text = (
+        f"Here are your <b>{amount} sats</b>, @{username}.\n\n"
+        f"<b>Voucher Code:</b>\n"
+        f"<code>{lnurl}</code>\n\n"
+        f"💡 <i>Tap the code above to copy it, then paste into your Lightning wallet</i>"
+    )
+
     # Send message with HTML formatting
     update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
@@ -434,12 +309,11 @@ def send_voucher(update: Update, lnurl: str, link_id: str, username: str, bonus:
         buf = BytesIO()
         img.save(buf, format="PNG")
         buf.seek(0)
-        buf.name = f"{'lucky_' if bonus else ''}voucher.png"
-        
-        caption = f"{'🍀 Lucky Bonus' if bonus else '⚡ Lightning'} Voucher QR"
-        update.message.reply_photo(photo=InputFile(buf), caption=caption)
-        
-        logger.info(f"Sent {'lucky ' if bonus else ''}voucher QR for LNURL: {lnurl[:20]}...")
+        buf.name = "voucher.png"
+
+        update.message.reply_photo(photo=InputFile(buf), caption="⚡ Lightning Voucher QR")
+
+        logger.info(f"Sent voucher QR for LNURL: {lnurl[:20]}...")
         
     except Exception as e:
         logger.error(f"Failed to generate QR code: {e}")
@@ -455,29 +329,13 @@ def start_command(update: Update, context: CallbackContext):
     if payload == "claim":
         handle_claim(update, context, usr, cid, is_admin)
     else:
-        # Enhanced welcome message
         welcome_text = (
             f"⚡ <b>Lightning Voucher Bot</b>\n\n"
             f"Welcome @{usr}! Get your free <b>{MIN_WITHDRAWABLE_SATS} sats</b> with /getvoucher\n\n"
-        )
-        
-        if LUCKY_VOUCHER_ENABLED:
-            chance_percent = LUCKY_VOUCHER_CHANCE * 100
-            total_wins, total_amount = get_lucky_stats()
-            welcome_text += (
-                f"🍀 <b>Lucky Feature Active!</b>\n"
-                f"• {chance_percent:.2f}% chance to win <b>{LUCKY_VOUCHER_AMOUNT:,} bonus sats</b>\n"
-                f"• {total_wins} lucky winners so far\n"
-                f"• {total_amount:,} bonus sats distributed\n\n"
-            )
-        
-        welcome_text += (
             f"<b>Commands:</b>\n"
-            f"• /getvoucher - Claim your sats\n"
-            f"• /info - About lucky bonuses\n"
-            f"• /lucky - Lucky statistics"
+            f"• /getvoucher - Claim your sats"
         )
-        
+
         update.message.reply_text(welcome_text, parse_mode=ParseMode.HTML)
 
 def handle_claim(update: Update, context: CallbackContext, username: str, chat_id: str, is_admin: bool):
@@ -489,15 +347,10 @@ def handle_claim(update: Update, context: CallbackContext, username: str, chat_i
         )
         return
 
-    normal, lucky = assign_voucher(chat_id, is_admin=is_admin)
-    
-    if normal:
-        lnurl_n, lid_n = normal
-        send_voucher(update, lnurl_n, lid_n, username)
-        
-        if lucky:
-            lnurl_l, lid_l = lucky
-            send_voucher(update, lnurl_l, lid_l, username, bonus=True)
+    lnurl, lid = assign_voucher(chat_id, is_admin=is_admin)
+
+    if lnurl:
+        send_voucher(update, lnurl, lid, username)
     else:
         update.message.reply_text(
             "No vouchers available right now.\n"
@@ -512,63 +365,6 @@ def getvoucher_command(update: Update, context: CallbackContext):
     is_admin = (update.effective_user.id == ADMIN_TELEGRAM_ID)
     handle_claim(update, context, usr, cid, is_admin)
 
-def info_command(update: Update, context: CallbackContext):
-    if not LUCKY_VOUCHER_ENABLED:
-        update.message.reply_text("Lucky bonuses are currently disabled.")
-        return
-    
-    chance_percent = LUCKY_VOUCHER_CHANCE * 100
-    total_wins, total_amount = get_lucky_stats()
-    
-    info_text = (
-        f"🍀 <b>Lucky Bonus Feature</b>\n\n"
-        f"<b>How it works:</b>\n"
-        f"• {chance_percent:.2f}% chance per claim\n"
-        f"• Winners get an extra <b>{LUCKY_VOUCHER_AMOUNT:,} sats</b>\n"
-        f"• Completely random and automatic\n\n"
-        f"<b>Statistics:</b>\n"
-        f"• {total_wins} lucky winners\n"
-        f"• {total_amount:,} bonus sats distributed\n"
-        f"• Average: {(total_amount / max(total_wins, 1)):,.0f} sats per winner"
-    )
-    
-    update.message.reply_text(info_text, parse_mode=ParseMode.HTML)
-
-def lucky_command(update: Update, context: CallbackContext):
-    if not LUCKY_VOUCHER_ENABLED:
-        update.message.reply_text("Lucky bonuses are currently disabled.")
-        return
-    
-    total_wins, total_amount = get_lucky_stats()
-    chance_percent = LUCKY_VOUCHER_CHANCE * 100
-    
-    conn = sqlite3.connect("db.sqlite3", timeout=10)
-    c = conn.cursor()
-    c.execute(
-        "SELECT username, amount, won_at FROM lucky_wins "
-        "ORDER BY won_at DESC LIMIT 5"
-    )
-    recent_winners = c.fetchall()
-    conn.close()
-    
-    stats_text = (
-        f"🍀 <b>Lucky Statistics</b>\n\n"
-        f"<b>Chance:</b> {chance_percent:.2f}% per claim\n"
-        f"<b>Bonus:</b> {LUCKY_VOUCHER_AMOUNT:,} sats\n"
-        f"<b>Total winners:</b> {total_wins}\n"
-        f"<b>Total distributed:</b> {total_amount:,} sats\n\n"
-    )
-    
-    if recent_winners:
-        stats_text += "<b>Recent winners:</b>\n"
-        for username, amount, won_at in recent_winners:
-            won_date = won_at.split()[0] if won_at else "Unknown"
-            stats_text += f"• @{username or 'Anonymous'}: {amount:,} sats ({won_date})\n"
-    else:
-        stats_text += "No lucky winners yet."
-    
-    update.message.reply_text(stats_text, parse_mode=ParseMode.HTML)
-
 def stats_command(update: Update, context: CallbackContext):
     if update.effective_user.id != ADMIN_TELEGRAM_ID:
         return
@@ -576,42 +372,23 @@ def stats_command(update: Update, context: CallbackContext):
     conn = sqlite3.connect("db.sqlite3", timeout=10)
     c = conn.cursor()
     
-    # Regular voucher stats - only count valid LNURLs
-    c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NOT NULL AND bonus = 0 AND lnurl LIKE 'LNURL%'")
-    used_normal = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NULL AND bonus = 0 AND lnurl LIKE 'LNURL%'")
-    free_normal = c.fetchone()[0]
-    
-    # Lucky voucher stats
-    c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NOT NULL AND bonus = 1 AND lnurl LIKE 'LNURL%'")
-    used_lucky = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NULL AND bonus = 1 AND lnurl LIKE 'LNURL%'")
-    free_lucky = c.fetchone()[0]
+    # Voucher stats - only count valid LNURLs
+    c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NOT NULL AND lnurl LIKE 'LNURL%'")
+    used = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NULL AND lnurl LIKE 'LNURL%'")
+    free = c.fetchone()[0]
     
     # Count invalid entries
     c.execute("SELECT COUNT(*) FROM vouchers WHERE lnurl NOT LIKE 'LNURL%'")
     invalid_entries = c.fetchone()[0]
     
-    # Lucky wins
-    c.execute("SELECT COUNT(*), SUM(amount) FROM lucky_wins")
-    result = c.fetchone()
-    total_lucky_wins = result[0] or 0
-    total_lucky_amount = result[1] or 0
-    
     conn.close()
     
     stats_text = (
         f"📊 <b>Admin Statistics</b>\n\n"
-        f"<b>Regular Vouchers:</b>\n"
-        f"• Used: {used_normal}\n"
-        f"• Available: {free_normal}\n\n"
-        f"<b>Lucky Vouchers:</b>\n"
-        f"• Used: {used_lucky}\n"
-        f"• Available: {free_lucky}\n\n"
-        f"<b>Lucky Wins:</b>\n"
-        f"• Total: {total_lucky_wins}\n"
-        f"• Amount: {total_lucky_amount:,} sats\n"
-        f"• Rate: {(used_lucky / max(used_normal, 1) * 100):.2f}%\n\n"
+        f"<b>Vouchers:</b>\n"
+        f"• Used: {used}\n"
+        f"• Available: {free}\n\n"
         f"<b>Database:</b>\n"
         f"• Invalid entries: {invalid_entries}"
     )
@@ -649,25 +426,14 @@ def error_handler(update: object, context: CallbackContext):
 def check_voucher_supply():
     conn = sqlite3.connect("db.sqlite3", timeout=10)
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NULL AND bonus = 0 AND lnurl LIKE 'LNURL%'")
-    free_normal = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NULL AND lnurl LIKE 'LNURL%'")
+    free = c.fetchone()[0]
     conn.close()
     
     threshold = max(10, VOUCHER_BATCH_SIZE // 10)
-    if free_normal < threshold:
-        logger.info("Normal voucher supply low (%d), refilling...", free_normal)
+    if free < threshold:
+        logger.info("Voucher supply low (%d), refilling...", free)
         create_voucher_group()
-
-    if LUCKY_VOUCHER_ENABLED:
-        conn = sqlite3.connect("db.sqlite3", timeout=10)
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM vouchers WHERE assigned_to IS NULL AND bonus = 1 AND lnurl LIKE 'LNURL%'")
-        free_lucky = c.fetchone()[0]
-        conn.close()
-        
-        if free_lucky == 0:
-            logger.info("Lucky voucher pool empty, refilling...")
-            create_lucky_vouchers()
 
 def main():
     init_db()
@@ -676,7 +442,6 @@ def main():
     # Clean up any existing invalid entries
     clean_database()
 
-    create_lucky_vouchers()
     create_voucher_group()
 
     updater = Updater(token=TELEGRAM_BOT_TOKEN, use_context=True)
@@ -684,8 +449,6 @@ def main():
 
     dp.add_handler(CommandHandler("start", start_command))
     dp.add_handler(CommandHandler("getvoucher", getvoucher_command))
-    dp.add_handler(CommandHandler("info", info_command))
-    dp.add_handler(CommandHandler("lucky", lucky_command))
     dp.add_handler(CommandHandler("stats", stats_command))
     dp.add_handler(CommandHandler("resetvouchers", resetvouchers_command))
     dp.add_handler(CommandHandler("cleanup", cleanup_command))
