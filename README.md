@@ -82,7 +82,26 @@ As an admin, you can generate as many vouchers as you like. All other users are 
 
 > Hey @user, you’ve already claimed 21 sats 🎉 Let’s keep it fair - thank you! 🙏
 
-You can use the `/stats` command in the bot to display a small statistics overview.
+### Available bot commands
+
+| Command         | Who         | Description                                                              |
+|------------------|-------------|---------------------------------------------------------------------------|
+| `/start`         | everyone    | Shows the welcome message.                                                |
+| `/getvoucher`    | everyone    | Claims a voucher (once per user; admins can claim repeatedly).            |
+| `/stats`         | admin only  | Shows how many vouchers are used vs. still free.                          |
+| `/resetvouchers` | admin only  | Purges all still-unassigned vouchers to force a fresh batch (see below).  |
+
+### Changing the LNbits server or API key later
+
+Already-created vouchers are stored locally in `db.sqlite3` as ready-to-use LNURL-withdraw links, and each still-unassigned voucher is handed out before a new batch is generated. Since the LNURL itself points at the LNbits server it was created on, if you later edit `LNBITS_API_URL`/`LNBITS_API_KEY` in `.env` and restart, any **unused** vouchers from before the change would otherwise keep pointing at the old server.
+
+To avoid this, BoltFaucet automatically detects a changed `LNBITS_API_URL`/`LNBITS_API_KEY` on startup and purges unused vouchers from the previous configuration (already-claimed vouchers are kept, so users who already claimed can't claim again). You can also trigger this manually at any time as admin:
+
+```
+/resetvouchers
+```
+
+This removes all still-unassigned vouchers so a fresh batch is created from the current `.env` settings on the next claim.
 
 ---
 

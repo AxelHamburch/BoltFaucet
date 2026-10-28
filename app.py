@@ -2,6 +2,7 @@
 import os
 import re
 import time
+import hashlib
 import sqlite3
 import logging
 import requests
@@ -62,6 +63,59 @@ def init_db():
         used   BOOLEAN DEFAULT 0
       )
     ''')
+    c.execute('''
+      CREATE TABLE IF NOT EXISTS settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT
+      )
+    ''')
+    conn.commit()
+    conn.close()
+
+
+def get_lnbits_fingerprint() -> str:
+    """Fingerprint of the currently configured LNbits server + API key."""
+    raw = f"{LNBITS_API_BASE}|{LNBITS_API_KEY}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def purge_unassigned_vouchers() -> int:
+    """Delete all vouchers that haven't been handed out to a user yet.
+    Already assigned/used vouchers are kept so claimed users can't claim again."""
+    conn = sqlite3.connect("db.sqlite3", timeout=10)
+    c = conn.cursor()
+    c.execute("DELETE FROM vouchers WHERE assigned_to IS NULL")
+    purged = c.rowcount
+    conn.commit()
+    conn.close()
+    return purged
+
+
+def check_lnbits_config_change():
+    """Detect a changed LNBITS_API_URL/LNBITS_API_KEY (e.g. after editing .env).
+    Leftover, not-yet-assigned vouchers still point to the previous server/wallet,
+    so they are purged automatically to force a fresh batch on the new config."""
+    fingerprint = get_lnbits_fingerprint()
+    conn = sqlite3.connect("db.sqlite3", timeout=10)
+    c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key = 'lnbits_fingerprint'")
+    row = c.fetchone()
+    previous = row[0] if row else None
+
+    if previous is not None and previous != fingerprint:
+        c.close()
+        purged = purge_unassigned_vouchers()
+        logger.warning(
+            "Detected LNbits server/API key change - purged %d unused voucher(s) "
+            "from the previous configuration.", purged
+        )
+        conn = sqlite3.connect("db.sqlite3", timeout=10)
+        c = conn.cursor()
+
+    c.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('lnbits_fingerprint', ?)",
+        (fingerprint,)
+    )
     conn.commit()
     conn.close()
 
@@ -258,6 +312,18 @@ def stats_command(update: Update, context: CallbackContext):
     update.message.reply_text(f"📊 Used: {used}, Free: {free}")
 
 
+def resetvouchers_command(update: Update, context: CallbackContext):
+    """Admin-only: purge still-unassigned vouchers, e.g. after switching the
+    LNbits server/API key by hand or to force a fresh batch on demand."""
+    if update.effective_user.id != ADMIN_TELEGRAM_ID:
+        return
+    purged = purge_unassigned_vouchers()
+    logger.info("Admin manually purged %d unused voucher(s).", purged)
+    update.message.reply_text(
+        f"🗑️ Removed {purged} unused voucher(s). A fresh batch will be created on next claim."
+    )
+
+
 def error_handler(update: object, context: CallbackContext):
     logger.exception("Error while handling update: %s", context.error)
     raise DispatcherHandlerStop()
@@ -265,12 +331,14 @@ def error_handler(update: object, context: CallbackContext):
 
 def main():
     init_db()
+    check_lnbits_config_change()
     updater = Updater(token=TELEGRAM_BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start_command))
     dp.add_handler(CommandHandler("getvoucher", getvoucher_command))
     dp.add_handler(CommandHandler("stats", stats_command))
+    dp.add_handler(CommandHandler("resetvouchers", resetvouchers_command))
     dp.add_error_handler(error_handler)
 
     updater.start_polling()
